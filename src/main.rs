@@ -1,38 +1,25 @@
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
-use tokio::runtime::Runtime;
+use mio::event::Event;
+use mio::net::{TcpListener, TcpStream};
+use mio::{Events, Interest, Poll, Registry, Token};
+use std::collections::HashMap;
+use std::io::{self, Read, Write};
+use std::str::from_utf8;
 
-fn main() {
-    let rt = Runtime::new().unwrap();
+fn main() -> io::Result<()> {
+    env_logger::init();
 
-    rt.block_on(async {
-        let listener = TcpListener::bind("127.0.0.1:8080").await.unwrap();
-        println!("Server running on 127.0.0.1:8080");
+    let mut poll = Poll::new()?;
 
-        loop {
-            let (mut socket, addr) = listener.accept().await.unwrap();
-            println!("New connection: {}", addr);
+    let mut events = Events::with_capacity(128);
 
-            tokio::spawn(async move {
-                let mut buf = [0; 1024];
+    let addr = "127.0.0.1:9000".parse().unwrap();
 
-                loop {
-                    let n = match socket.read(&mut buf).await {
-                        // socket closed
-                        Ok(0) => return,
-                        Ok(n) => n,
-                        Err(e) => {
-                            eprintln!("failed to read from socket; err = {:?}", e);
-                            return;
-                        }
-                    };
+    let mut server = TcpListener::bind(addr)?;
 
-                    if let Err(e) = socket.write_all(&buf[0..n]).await {
-                        eprint!("failed to write to socket; err = {:?}", e);
-                        return;
-                    }
-                }
-            });
-        }
-    })
+    poll.registry()
+        .register(&mut server, SERVER, Interest::READABLE);
+
+    let mut connection = HashMap::new();
+
+    Ok(())
 }
